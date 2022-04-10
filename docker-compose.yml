@@ -1,0 +1,14 @@
+version: "3"
+
+services:
+  blockchain:
+    build: .
+    image: behringer24/blockchain
+    environment: 
+      DEV: "true"
+    volumes:
+      - ./blockchain:/app
+    ports:
+      - "5000:5000"
+    restart: always
+    container_name: blockchain
