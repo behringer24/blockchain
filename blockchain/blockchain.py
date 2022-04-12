@@ -1,18 +1,25 @@
 import hashlib
 import json
+from json.decoder import JSONDecodeError
 from time import time
 from urllib.parse import urlparse
 from uuid import uuid4
 
+from nacl.encoding import HexEncoder
+from nacl.signing import SigningKey
+from nacl.signing import VerifyKey
+
 import requests
 from flask import Flask, jsonify, request
-
 
 class Blockchain:
     def __init__(self):
         self.current_transactions = []
         self.chain = []
         self.nodes = set()
+        self.wallets = {}
+        private_key = ""
+        public_key = ""
 
         # Create the genesis block
         self.new_block(previous_hash='1', proof=100)
@@ -63,6 +70,29 @@ class Blockchain:
             current_index += 1
 
         return True
+
+    def generate_wallet(self, name='wallet'):
+        private_key = SigningKey.generate()
+        public_key = private_key.verify_key
+        payload = {
+            "private_key": private_key.encode(encoder=HexEncoder).decode(),
+            "public_key": public_key.encode(encoder=HexEncoder).decode(),
+        }
+        with open(name + ".json", "w") as file:
+            json.dump(payload, file)
+        return payload
+
+    def get_wallet(self):
+        try:
+            with open("wallet.json", "r") as file:
+                keys = json.load(file)
+        except (JSONDecodeError, FileNotFoundError):
+            keys = self.generate_wallet()
+
+        self.private_key = keys["private_key"]
+        self.public_key = keys["public_key"]
+
+        return self.public_key
 
     def resolve_conflicts(self):
         """
@@ -115,6 +145,11 @@ class Blockchain:
             'previous_hash': previous_hash or self.hash(self.chain[-1]),
         }
 
+        # Update wallets
+        for transaction in self.current_transactions:
+            self.wallets[transaction['recipient']] = self.wallets.get(transaction['recipient'], 0) + transaction['amount']
+            self.wallets[transaction['sender']] = self.wallets.get(transaction['sender'], 0) - transaction['amount']
+
         # Reset the current list of transactions
         self.current_transactions = []
 
@@ -130,13 +165,85 @@ class Blockchain:
         :param amount: Amount
         :return: The index of the Block that will hold this transaction
         """
-        self.current_transactions.append({
+
+        transaction_block = {
             'sender': sender,
             'recipient': recipient,
-            'amount': amount,
-        })
+            'amount': amount
+        }
+
+        self.current_transactions.append(transaction_block)
 
         return self.last_block['index'] + 1
+
+
+    def validate_transaction(self, sender, recipient, amount, signature):
+        """
+        Validate if transaction is signed correctly
+
+        :param sender: Address of the Sender
+        :param recipient: Address of the Recipient
+        :param amount: Amount
+        :param signature: Signature
+        :return: boolean
+        """
+
+        #return 1
+
+        verify_key = VerifyKey(sender, encoder=HexEncoder)
+
+        transaction_block = {
+            'sender': sender,
+            'recipient': recipient,
+            'amount': amount
+        }
+
+        block_string = json.dumps(transaction_block, sort_keys=True).encode()
+        signature_bytes = HexEncoder.decode(signature)
+
+        return verify_key.verify(block_string, signature_bytes)
+
+    def sign_transaction(self, sender, recipient, amount, signing_key):
+        signing_key = SigningKey(signing_key, encoder=HexEncoder)
+
+        transaction_block = {
+            'sender': sender,
+            'recipient': recipient,
+            'amount': amount
+        }
+        block_string = json.dumps(transaction_block, sort_keys=True).encode()
+
+        return signing_key.sign(block_string).signature.hex()
+
+    def transactions_for(self, wallet):
+        """
+        Calculate the amount of open transactions for wallet
+
+        :param wallet: A wallet id
+        :return: value
+        """
+
+        amount = 0
+
+        for transaction in self.current_transactions:
+            if (transaction['recipient'] == wallet):
+                amount += transaction['amount']
+            if (transaction['sender'] == wallet):
+                amount -= transaction['amount']
+
+        return amount
+
+
+    def wallet(self, wallet):
+        """
+        Return the amount of a wallet
+
+        :param wallet: A wallet id
+        :return: value
+        """
+
+        return self.wallets.get(wallet, 0)
+
 
     @property
     def last_block(self):
@@ -194,11 +301,28 @@ class Blockchain:
 # Instantiate the Node
 app = Flask(__name__)
 
-# Generate a globally unique address for this node
-node_identifier = str(uuid4()).replace('-', '')
-
 # Instantiate the Blockchain
 blockchain = Blockchain()
+
+# Generate a globally unique address for this node
+#node_identifier = str(uuid4()).replace('-', '')
+node_identifier = blockchain.get_wallet()
+
+@app.route('/wallet', methods=['POST'])
+def wallet():
+    values = request.get_json()
+
+    wallet = values.get('wallet')
+    if wallet is None:
+        return "Error: Please supply a wallet id", 400
+
+    amount = blockchain.wallet(wallet)
+
+    response = {
+        'wallet': wallet,
+        'amount': amount
+    }
+    return jsonify(response), 200
 
 
 @app.route('/mine', methods=['GET'])
@@ -234,15 +358,40 @@ def new_transaction():
     values = request.get_json()
 
     # Check that the required fields are in the POST'ed data
-    required = ['sender', 'recipient', 'amount']
+    required = ['sender', 'recipient', 'amount', 'signature']
     if not all(k in values for k in required):
         return 'Missing values', 400
+
+    if not blockchain.validate_transaction(values['sender'], values['recipient'], values['amount'], values['signature']):
+        return 'Wrong signature', 400
+
+    if blockchain.wallet(values['sender']) + blockchain.transactions_for(values['sender']) < values['amount']:
+        return 'Wallet has not enough tokens', 400
 
     # Create a new Transaction
     index = blockchain.new_transaction(values['sender'], values['recipient'], values['amount'])
 
-    response = {'message': f'Transaction will be added to Block {index}'}
+    response = {'message': f'Transaction will be added to Block {index}', 'signature': values['signature']}
     return jsonify(response), 201
+
+
+@app.route('/transactions/sign', methods=['POST'])
+def sign_transaction():
+    values = request.get_json()
+
+    # Check that the required fields are in the POST'ed data
+    required = ['sender', 'recipient', 'amount', 'signkey']
+    if not all(k in values for k in required):
+        return 'Missing values', 400
+
+    response = {
+        'message': 'for testing purposes only',
+        'sender': values['sender'],
+        'recipient': values['recipient'],
+        'amount': values['amount'],
+        'signature': blockchain.sign_transaction(values['sender'], values['recipient'], values['amount'], values['signkey'])
+    }
+    return jsonify(response), 300
 
 
 @app.route('/chain', methods=['GET'])
@@ -295,7 +444,9 @@ if __name__ == '__main__':
 
     parser = ArgumentParser()
     parser.add_argument('-p', '--port', default=5000, type=int, help='port to listen on')
+    parser.add_argument('-d', '--debug', default=0, type=int, help='run server in debug mode')
     args = parser.parse_args()
     port = args.port
+    debug = args.debug == 1
 
-    app.run(debug=True, host='0.0.0.0', port=port)
+    app.run(debug=debug, host='0.0.0.0', port=port)
