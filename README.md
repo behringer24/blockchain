@@ -103,3 +103,24 @@ Method: GET
 Payload: None
 
 Returns the whole blockchain in json representation.
+
+### Sign transactions
+Endpoint: ``/transactions/sign``
+
+Method: POST
+
+Payload:
+```
+{
+    "sender": "public key of sender",
+    "recipient": "<public key of recipient>",
+    "amount": <amount to be sent>,
+    "signkey": "<private key of sender>"
+}
+```
+
+WARNING: For testing purposes only. Not intended for production! This should be done in a client application where the private key is kept secret.
+
+Signs a transaction with the provided private key / signing key. See above on how transactions are signed.
+
+Is used in development prior to sending transactions.
