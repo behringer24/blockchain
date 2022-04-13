@@ -1,6 +1,7 @@
 import hashlib
 import json
 from json.decoder import JSONDecodeError
+from urllib.parse import urlparse
 import requests
 from block import Block
 from transaction import Transaction
