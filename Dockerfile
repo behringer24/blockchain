@@ -12,4 +12,4 @@ RUN cd /app && \
 
 EXPOSE 5000
 
-CMD ["python", "blockchain.py", "--port", "5000", "--debug", "1"]
+CMD ["python", "server.py", "--port", "5000", "--debug", "1"]
