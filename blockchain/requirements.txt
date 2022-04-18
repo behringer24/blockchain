@@ -2,3 +2,4 @@ flask>1.0.0
 requests>2.20.0
 werkzeug==0.16.1
 pynacl==1.5.0
+APScheduler

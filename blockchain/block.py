@@ -13,9 +13,9 @@ class Block:
     proof = 0
     previous_hash = ""
 
-    def __init__(self, index, proof, previous_hash="", transactions: List[Transaction]=[]):
+    def __init__(self, index, proof, previous_hash="", transactions: List[Transaction]=[], timestamp=None):
         self.index = index
-        self.timestamp = time()
+        self.timestamp = timestamp or time()
         self.transactions = transactions
         self.proof = proof
         self.previous_hash = previous_hash
@@ -25,7 +25,7 @@ class Block:
         transactions: List[Transaction] = []
         for json_transaction in json_block['transactions']:
             transactions.append(Transaction.from_json(json_transaction))
-        return cls(json_block['index'], json_block['proof'], json_block['previous_hash'], transactions)
+        return cls(json_block['index'], json_block['proof'], json_block['previous_hash'], transactions, json_block['timestamp'])
 
     def hash(self):
         """

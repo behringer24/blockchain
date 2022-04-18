@@ -1,7 +1,6 @@
 import hashlib
 import json
 from json.decoder import JSONDecodeError
-from urllib.parse import urlparse
 import requests
 from block import Block
 from transaction import Transaction
@@ -11,20 +10,20 @@ class Blockchain:
 
     current_transactions: List[Transaction] = []
     chain: List[Block] = []
-    nodes = set()
     wallets = {}
-    private_key = ""
-    public_key = ""
 
     def __init__(self, chain: List[Block] = []):
         self.current_transactions = []
         self.chain = chain
-        self.nodes = set()
         self.wallets = {}
 
         # Create the genesis block
         if len(chain) == 0:
-            self.new_block(1, '1')
+            self.new_block(
+                proof=1, 
+                previous_hash='1',
+                timestamp=151110000
+                )
 
     @classmethod
     def from_json(cls, json_chain: json):
@@ -32,22 +31,6 @@ class Blockchain:
         for json_block in json_chain:
             cls.chain.append(Block.from_json(json_block))
         return cls(chain)
-
-    def register_node(self, address):
-        """
-        Add a new node to the list of nodes
-
-        :param address: Address of node. Eg. 'http://192.168.0.5:5000'
-        """
-
-        parsed_url = urlparse(address)
-        if parsed_url.netloc:
-            self.nodes.add(parsed_url.netloc)
-        elif parsed_url.path:
-            # Accepts an URL without scheme like '192.168.0.5:5000'.
-            self.nodes.add(parsed_url.path)
-        else:
-            raise ValueError('Invalid URL')
 
 
     def valid_chain(self, chain: List[Block]):
@@ -79,41 +62,7 @@ class Blockchain:
         return True
 
 
-    def resolve_conflicts(self):
-        """
-        This is our consensus algorithm, it resolves conflicts
-        by replacing our chain with the longest one in the network.
-
-        :return: True if our chain was replaced, False if not
-        """
-
-        neighbours = self.nodes
-        new_chain: List[Block] = []
-
-        # We're only looking for chains longer than ours
-        max_length = len(self.chain)
-
-        # Grab and verify the chains from all the nodes in our network
-        for node in neighbours:
-            response = requests.get(f'http://{node}/chain')
-
-            if response.status_code == 200:
-                length = response.json()['length']
-                chain = Blockchain.from_json(response.json()['chain'])
-
-                # Check if the length is longer and the chain is valid
-                if length > max_length and self.valid_chain(chain):
-                    max_length = length
-                    new_chain = chain
-
-        # Replace our chain if we discovered a new, valid chain longer than ours
-        if new_chain:
-            self.chain = new_chain
-            return True
-
-        return False
-
-    def new_block(self, proof, previous_hash):
+    def new_block(self, proof, previous_hash, timestamp=None):
         """
         Create a new Block in the Blockchain
 
@@ -126,7 +75,8 @@ class Blockchain:
             index=len(self.chain) + 1,
             proof=proof,
             previous_hash=previous_hash or self.chain[-1].hash(),
-            transactions=self.current_transactions
+            transactions=self.current_transactions,
+            timestamp=timestamp
             )
 
         # Update wallets
@@ -139,6 +89,29 @@ class Blockchain:
 
         self.chain.append(block)
         return block
+
+
+    def add_block(self, block: Block):
+        last_proof = self.last_block.proof
+        last_hash = self.last_block.hash()
+
+        if block.index != len(self.chain) + 1:
+            print ("wrong Index")
+            return False
+        if block.previous_hash != last_hash:
+            print ("wrong hash")
+            return False
+        if not self.valid_proof(last_proof, block.proof, last_hash):
+            print ("invalid proof")
+            return False
+
+        for transaction in block.transactions:
+            self.wallets[transaction.recipient] = self.wallets.get(transaction.recipient, 0) + transaction.amount
+            self.wallets[transaction.sender] = self.wallets.get(transaction.sender, 0) - transaction.amount
+
+        self.chain.append(block)
+        return True
+
 
     def new_transaction(self, transaction: Transaction):
         """
@@ -181,6 +154,17 @@ class Blockchain:
         """
 
         return self.wallets.get(wallet, 0)
+
+    def getblocks_json(self, index=0):
+        current_index = index
+
+        response = []
+
+        while current_index < len(self.chain):
+            response.append(self.chain[current_index].json())
+            current_index += 1
+
+        return response
 
 
     @property

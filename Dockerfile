@@ -8,8 +8,11 @@ WORKDIR /app
 # Install dependencies.
 COPY blockchain /app
 RUN cd /app && \
-    pip install -r requirements.txt
+    pip install -r requirements.txt && \
+    mkdir /wallets 
 
 EXPOSE 5000
+
+ENV PYTHONUNBUFFERED=1
 
 CMD ["python", "server.py", "--port", "5000", "--debug", "1"]

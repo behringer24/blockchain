@@ -4,6 +4,7 @@ from blockchain import Blockchain
 from block import Block
 from transaction import Transaction
 from wallet import Wallet
+from peer import Peer
 
 # Instantiate the Node
 app = Flask(__name__)
@@ -14,6 +15,8 @@ blockchain = Blockchain()
 # Read private and public key for wallet
 wallet = Wallet('wallet')
 
+# Peer handling
+peer = Peer(blockchain, wallet)
 
 @app.route('/mine', methods=['GET'])
 def mine():
@@ -35,6 +38,8 @@ def mine():
     previous_hash = last_block.hash()
     block = blockchain.new_block(proof, previous_hash)
 
+    peer.broadcast("/blocks/add", block.json())
+    
     response = {
         'message': "New Block Forged",
         'block': block.json()
@@ -119,11 +124,19 @@ def register_nodes():
         return "Error: Please supply a valid list of nodes", 400
 
     for node in nodes:
-        blockchain.register_node(node)
+        peer.register_node(node)
+
+    if "erode" in values:
+        values["erode"] -= 1
+    else:
+        values["erode"] = 3
+    print(values["erode"])
+    if values["erode"] > 0:
+        peer.broadcast("/nodes/register", values )
 
     response = {
         'message': 'New nodes have been added',
-        'total_nodes': list(blockchain.nodes),
+        'nodes': peer._nodes,
     }
     return jsonify(response), 201
 
@@ -142,6 +155,46 @@ def consensus():
             'message': 'Our chain is authoritative',
             'chain': blockchain.chain
         }
+
+    return jsonify(response), 200
+
+
+@app.route('/blocks/add', methods=['POST'])
+def add_block():
+    values = request.get_json()
+
+    if values is None:
+        return "Error: Please supply a valid block", 400
+
+    block = Block.from_json(values)
+    
+    if blockchain.add_block(block):
+        response = {
+            'message': 'External block added to chain',
+            'block': block.json()
+        }
+        return jsonify(response), 200
+
+    response = {
+        'message': 'Invalid block'
+    }
+    return jsonify(response), 500
+
+
+@app.route('/ping', methods=['POST'])
+def ping():
+    values = request.get_json()
+
+    chain_length = values.get('chainlength')
+
+    response = {
+        'message': 'pong',
+        'node': wallet.public_key,
+        'length': len(blockchain.chain),
+    }
+
+    if int(chain_length) < len(blockchain.chain):
+        response['blocks'] =  blockchain.getblocks_json(chain_length)
 
     return jsonify(response), 200
 

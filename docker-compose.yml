@@ -8,7 +8,39 @@ services:
       DEV: "true"
     volumes:
       - ./blockchain:/app
+      - wallet:/wallets
     ports:
       - "5000:5000"
     restart: always
     container_name: blockchain
+  
+  blockchain2:
+    build: .
+    image: behringer24/blockchain
+    environment: 
+      DEV: "true"
+    volumes:
+      - ./blockchain:/app
+      - wallet1:/wallets
+    ports:
+      - "5001:5000"
+    restart: always
+    container_name: blockchain2
+
+  blockchain3:
+    build: .
+    image: behringer24/blockchain
+    environment: 
+      DEV: "true"
+    volumes:
+      - ./blockchain:/app
+      - wallet2:/wallets
+    ports:
+      - "5002:5000"
+    restart: always
+    container_name: blockchain3
+
+volumes:
+  wallet:
+  wallet1:
+  wallet2:

@@ -6,12 +6,13 @@ from nacl.signing import SigningKey
 
 class Wallet:
 
+    walletpath = "../wallets/"
     private_key = ""
     public_key = ""
 
     def __init__(self, name: str):
         try:
-            with open(name + ".json", "r") as file:
+            with open(self.walletpath + name + ".json", "r") as file:
                 keys = json.load(file)
         except (JSONDecodeError, FileNotFoundError):
             keys = self.generate_wallet(name)
@@ -27,6 +28,6 @@ class Wallet:
             "private_key": private_key.encode(encoder=HexEncoder).decode(),
             "public_key": public_key.encode(encoder=HexEncoder).decode(),
         }
-        with open(name + ".json", "w") as file:
+        with open(self.walletpath + name + ".json", "w") as file:
             json.dump(payload, file)
         return payload
